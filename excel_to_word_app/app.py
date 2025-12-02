@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-from docx.shared import Pt, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.oxml.ns import qn
 import io
 
 # 设置页面标题
@@ -20,107 +21,159 @@ COLLEGE_ORDER = [
     "文学与传媒学院", 
     "数据科学与人工智能学院",
     "电子与电气学院",
-    "机器人学院",
+    "机器人工程学院",
     "建筑与能源工程学院",
     "设计艺术学院",
     "外国语学院",
     "创新创业学院"
 ]
 
+def set_font(run, font_name='宋体', font_size=Pt(10.5), bold=False):
+    """统一设置字体，确保中文字体生效"""
+    run.font.name = font_name
+    # 关键：设置中文字体
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+    run.font.size = font_size
+    run.font.bold = bold
+    return run
+
 def create_word_document(df, selected_columns):
-    """创建Word文档并确保字体统一，添加请假说明和落款"""
     # 创建文档
     doc = Document()
     
-    # 设置文档默认字体（确保所有文本统一）
-    style = doc.styles['Normal']
-    style.font.name = '宋体'
-    style.font.size = Pt(10.5)
+    # ========== 第一部分：全局字体设置 ==========
+    # 1. 设置文档默认字体（最基础保障）
+    normal_style = doc.styles['Normal']
+    normal_style.font.name = '宋体'
+    normal_style._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+    normal_style.font.size = Pt(10.5)
     
-    # --- 新增：添加请假说明文字 ---
-    # 标题
+    # 2. 安全设置其他关键样式
+    key_style_names = ['Normal', 'Default Paragraph Font', 'Body Text']
+    for style_name in key_style_names:
+        try:
+            style = doc.styles[style_name]
+            if hasattr(style, 'font'):
+                style.font.name = '宋体'
+                # 确保中文字体设置
+                rpr = style.element.get_or_add_rPr()
+                rfonts = rpr.get_or_add_rFonts()
+                rfonts.set(qn('w:eastAsia'), '宋体')
+                style.font.size = Pt(10.5)
+        except (KeyError, AttributeError):
+            continue
+
+    # ========== 第二部分：强化字体设置函数 ==========
+    def set_font_robust(run, font_name='宋体', font_size=Pt(10.5), bold=False):
+        # 设置英文字体
+        run.font.name = font_name
+        
+        # 关键：确保中文字体设置（双重保障）
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+        
+        # 额外保障：直接操作XML
+        try:
+            rpr = run._element.get_or_add_rPr()
+            rfonts = rpr.get_or_add_rFonts()
+            rfonts.set(qn('w:eastAsia'), font_name)
+        except:
+            pass  # 如果上面的方法失败，使用默认方法
+        
+        run.font.size = font_size
+        run.font.bold = bold
+        return run
+    
+    # ========== 第三部分：内容创建（统一使用强化函数） ==========
+    # --- 请假说明 ---
     title_paragraph = doc.add_paragraph()
     title_run = title_paragraph.add_run('各二级学院：')
-    title_run.font.name = '宋体'
-    title_run.font.size = Pt(12)
-    title_run.font.bold = True  # 加粗
-    
-    # 正文
-    text_content = """兹定于X年X月X日举办“XXX（填活动名称）”活动。以下同学因参与活动组织工作，将于X月X日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。
-特此申请为以下同学办理 X月X日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！"""
+    set_font_robust(title_run, '宋体', Pt(12), bold=True)
     
     text_paragraph = doc.add_paragraph()
+    text_content = """兹定于X年X月X日举办"XXX（填活动名称）"活动。以下同学因参与活动组织工作，将于X月X日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。
+特此申请为以下同学办理 X月X日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！"""
     text_run = text_paragraph.add_run(text_content)
-    text_run.font.name = '宋体'
-    text_run.font.size = Pt(10.5)
+    set_font_robust(text_run, '宋体', Pt(10.5))
     
-    # 添加一个空行分隔
     doc.add_paragraph()
-    # --- 请假说明结束 ---
     
-    # 创建表格
+    # ========== 第四部分：表格创建（重点保障区域） ==========
     table = doc.add_table(rows=1, cols=len(selected_columns))
+    if table is None:
+        st.error("表格创建失败")
+        return doc
     
-    # 设置表格样式（可选，让表格更好看）
-    table.style = 'Table Grid'
+    # 设置宽度
+    for i, col in enumerate(selected_columns):
+        base_width = Inches(2.0)
+        extra_per_char = Inches(0.08)
+        col_width = base_width + (len(str(col))) * extra_per_char
+        table.columns[i].width = min(col_width, Inches(3.5))
+
+    # 添加边框函数（内部函数）
+    def add_table_borders(table_obj):
+        """手动为表格添加边框，不影响字体"""
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        
+        tbl = table_obj._tbl
+        # 为表格添加边框属性
+        tblPr = tbl.get_or_add_tblPr()
+        
+        # 创建边框元素
+        borders = OxmlElement('w:tblBorders')
+        
+        # 定义各边边框
+        border_types = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+        for border_type in border_types:
+            border = OxmlElement(f'w:{border_type}')
+            border.set(qn('w:val'), 'single')      # 单线边框
+            border.set(qn('w:sz'), '4')            # 边框粗细（4=0.5磅）
+            border.set(qn('w:space'), '0')         # 边框间距
+            border.set(qn('w:color'), '000000')    # 黑色边框
+            borders.append(border)
+        
+        tblPr.append(borders)
     
-    # 设置表头
+    # 调用函数添加边框
+    table.style="Table Grid"                      
+    
+    # 表头
     header_cells = table.rows[0].cells
     for i, col in enumerate(selected_columns):
-        # 清空单元格内容
         header_cells[i].text = ''
         paragraph = header_cells[i].paragraphs[0]
+        paragraph.clear()  # 清空所有内容
         
-        # 添加文本并设置字体
         run = paragraph.add_run(str(col))
-        run.font.name = '宋体'
-        run.font.size = Pt(11)
-        run.font.bold = True  # 表头加粗
-        
-        # 居中对齐
+        set_font_robust(run, '宋体', Pt(11), bold=True)
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    # 添加数据行
+    # 数据行
     for index, row in df.iterrows():
         row_cells = table.add_row().cells
         for i, col in enumerate(selected_columns):
             value = row[col]
-            
-            # 清空单元格内容
             row_cells[i].text = ''
             paragraph = row_cells[i].paragraphs[0]
+            paragraph.clear()  # 清空所有内容
             
-            # 添加文本并设置字体
             text_content = str(value) if pd.notna(value) else ""
             run = paragraph.add_run(text_content)
-            run.font.name = '宋体'
-            run.font.size = Pt(10.5)
-            
-            # 左对齐
-            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    
-    # --- 新增：添加表格后的落款信息 ---
-    # 添加一个空行
+            set_font_robust(run, '宋体', Pt(10.5))
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # ========== 第五部分：落款 ==========
     doc.add_paragraph()
-    
-    # 创建落款段落（右对齐）
     signature_paragraph = doc.add_paragraph()
     signature_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
-    # 第一行：共青团温州理工学院委员会
     run1 = signature_paragraph.add_run('共青团温州理工学院委员会')
-    run1.font.name = '宋体'
-    run1.font.size = Pt(10.5)
-    run1.font.bold = True  # 单位名称加粗
-    
-    # 添加换行
+    set_font_robust(run1, '宋体', Pt(10.5), bold=True)
     signature_paragraph.add_run('\n')
     
-    # 第二行：日期
     run2 = signature_paragraph.add_run('xx年xx月xx日')
-    run2.font.name = '宋体'
-    run2.font.size = Pt(10.5)
-    # --- 落款结束 ---
+    set_font_robust(run2, '宋体', Pt(10.5))
     
     return doc
 
@@ -192,8 +245,7 @@ if excel_file is not None:
     selected_columns = st.multiselect(
         "选择要添加到Word的列",
         all_columns,
-        default=all_columns[:4] if len(all_columns) >= 4 else all_columns
-    )
+        default=all_columns[:4] if len(all_columns) >= 4 else all_columns)
     
     # 第四步：生成Word文档
     st.header("第四步：生成Word文档")
