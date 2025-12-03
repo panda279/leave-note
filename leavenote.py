@@ -83,26 +83,48 @@ def create_word_document(df, selected_columns):
         run.font.bold = bold
         return run
     
-    # ========== 第三部分：内容创建（统一使用强化函数） ==========
+    # ========== 修正：文档大标题（无默认下划线） ==========
+    title_paragraph = doc.add_paragraph()
+    title_run = title_paragraph.add_run('公假单')
+    # 设置标题字体：黑体、小二、加粗、居中
+    title_run.font.name = '黑体'
+    title_run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+    title_run.font.size = Pt(22)
+    title_run.font.bold = True
+    title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # 在大标题后添加一个空行，使排版更美观
+    doc.add_paragraph()
+    # ========== 大标题添加结束 ==========
+    
     # --- 请假说明 ---
     title_paragraph = doc.add_paragraph()
     title_run = title_paragraph.add_run('各二级学院：')
     set_font_robust(title_run, '宋体', Pt(12), bold=True)
-    
-    text_paragraph = doc.add_paragraph()
-    text_content = """兹定于X年X月X日举办"XXX（填活动名称）"活动。以下同学因参与活动组织工作，将于X月X日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。
-特此申请为以下同学办理 X月X日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！"""
-    text_run = text_paragraph.add_run(text_content)
-    set_font_robust(text_run, '宋体', Pt(10.5))
-    
+
+    # 添加第一段文字，并设置缩进：使其首字与上一行的“各”字对齐
+    text_paragraph1 = doc.add_paragraph()
+    # 关键：设置整个段落的左侧缩进，抵消默认的段落缩进，使首字顶到最左
+    text_paragraph1.paragraph_format.left_indent = Pt(0)  # 确保左侧无额外缩进
+    text_paragraph1.paragraph_format.first_line_indent = Pt(24) # 首行不额外缩进
+    text_paragraph1.paragraph_format.space_after = Pt(0)  # 与下段无间距
+    text_content1 = '兹定于X年X月X日举办"XXX（填活动名称）"活动。以下同学因参与活动组织工作，将于X月X日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。'
+    text_run1 = text_paragraph1.add_run(text_content1)
+    set_font_robust(text_run1, '宋体', Pt(10.5))
+
+    # 添加第二段文字，缩进设置与第一段完全相同
+    text_paragraph2 = doc.add_paragraph()
+    text_paragraph2.paragraph_format.left_indent = Pt(0)  # 左侧无额外缩进
+    text_paragraph2.paragraph_format.first_line_indent = Pt(24) # 首行不额外缩进
+    # 第二段后可以留一点间距，或设为0与表格紧贴
+    text_paragraph2.paragraph_format.space_after = Pt(12)
+    text_content2 = '特此申请为以下同学办理 X月X日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！'
+    text_run2 = text_paragraph2.add_run(text_content2)
+    set_font_robust(text_run2, '宋体', Pt(10.5))
+
+    # 在说明文字和表格之间添加一个空行
     doc.add_paragraph()
     
-    # ========== 第四部分：表格创建（重点保障区域） ==========
-    table = doc.add_table(rows=1, cols=len(selected_columns))
-    if table is None:
-        st.error("表格创建失败")
-        return doc
-    
+    table=doc.add_table(rows=1,cols=len(selected_columns))
     # 设置宽度
     for i, col in enumerate(selected_columns):
         base_width = Inches(2.0)
@@ -197,7 +219,20 @@ if excel_file is not None:
     # 核心步骤1：自动删除空格
     st.info("正在清理'学院'列中的空格...")
     df['学院'] = df['学院'].astype(str).str.strip()
-    
+    st.info("正在规范化学院名称")
+    college_name_mapping={
+        "经管学院":"经济与管理学院",
+        "文传学院":"文学与传媒学院",
+        "电电学院":"电子与电气工程学院",
+        "建工学院":"建筑与能源工程学院",
+        "外院":"外国语学院",
+        "设艺学院":"设计艺术学院",
+        "创业学院":"创新与创业学院",
+        "数智学院":"数据科学与人工智能学院"}
+    def normalize_college_name(name):
+        name_clean=str(name).strip()
+        return college_name_mapping.get(name_clean,name_clean)
+    df["学院"]=df["学院"].apply(normalize_college_name)      
     # 显示清理后的唯一值
     unique_colleges = df['学院'].unique()
     st.write("**清理空格后，'学院'列的唯一值有：**", unique_colleges.tolist())
