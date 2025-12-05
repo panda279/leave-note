@@ -12,7 +12,7 @@ st.write("自动清理空格后，按指定顺序严格排序学院数据")
 
 # 第一步：上传Excel文件
 st.header("第一步：上传Excel文件")
-excel_file = st.file_uploader("选择Excel文件", type=['xlsx'])
+excel_file = st.file_uploader("选择Excel文件", type=['xlsx', 'xls'])
 
 # 定义学院排序顺序
 COLLEGE_ORDER = [
@@ -36,7 +36,7 @@ def set_font(run, font_name='宋体', font_size=Pt(10.5), bold=False):
     run.font.bold = bold
     return run
 
-def create_word_document(df, selected_columns, year, month, day, activity):
+def create_word_document(df, selected_columns):
     # 创建文档
     doc = Document()
     
@@ -82,8 +82,10 @@ def create_word_document(df, selected_columns, year, month, day, activity):
     title_run.font.size = Pt(22)
     title_run.font.bold = True
     title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    #doc.add_paragraph()
     
     # --- 请假说明 ---
+    # 这里使用不同的变量名，避免与上面的 title_paragraph 冲突
     college_title_paragraph = doc.add_paragraph()
     college_title_run = college_title_paragraph.add_run('各二级学院：')
     set_font_robust(college_title_run, '宋体', Pt(12), bold=True)
@@ -93,7 +95,7 @@ def create_word_document(df, selected_columns, year, month, day, activity):
     text_paragraph1.paragraph_format.left_indent = Pt(0)
     text_paragraph1.paragraph_format.first_line_indent = Pt(24)
     text_paragraph1.paragraph_format.space_after = Pt(0)
-    text_content1 = f'兹定于{year}年{month}月{day}日举办"{activity}"活动。以下同学因参与活动组织工作，将于{month}月{day}日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。'
+    text_content1 = '兹定于X年X月X日举办"XXX（填活动名称）"活动。以下同学因参与活动组织工作，将于X月X日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。'
     text_run1 = text_paragraph1.add_run(text_content1)
     set_font_robust(text_run1, '宋体', Pt(10.5))
 
@@ -102,10 +104,13 @@ def create_word_document(df, selected_columns, year, month, day, activity):
     text_paragraph2.paragraph_format.left_indent = Pt(0)
     text_paragraph2.paragraph_format.first_line_indent = Pt(24)
     text_paragraph2.paragraph_format.space_after = Pt(12)
-    text_content2 = f'特此申请为以下同学办理 {month}月{day}日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！'
+    text_content2 = '特此申请为以下同学办理 X月X日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！'
     text_run2 = text_paragraph2.add_run(text_content2)
     set_font_robust(text_run2, '宋体', Pt(10.5))
 
+    # 在说明文字和表格之间添加一个空行
+    #doc.add_paragraph()
+    
     # ========== 创建表格 ==========
     table = doc.add_table(rows=1, cols=len(selected_columns))
     
@@ -151,7 +156,7 @@ def create_word_document(df, selected_columns, year, month, day, activity):
     set_font_robust(run1, '宋体', Pt(10.5), bold=True)
     signature_paragraph.add_run('\n')
     
-    run2 = signature_paragraph.add_run(f'{year}年{month}月{day}日')
+    run2 = signature_paragraph.add_run('xx年xx月xx日')
     set_font_robust(run2, '宋体', Pt(10.5))
     
     return doc
@@ -159,42 +164,93 @@ def create_word_document(df, selected_columns, year, month, day, activity):
 # ========== 主程序开始 ==========
 if excel_file is not None:
     try:
-        # 第一次尝试：正常读取（假设第一行是表头）
-        df = pd.read_excel(excel_file)
-        df.columns = df.columns.str.strip()
+        # 读取文件扩展名
+        file_extension = excel_file.name.split('.')[-1].lower()
         
-        # 检查第一次读取是否找到"学院"列
-        if '学院' not in df.columns:
-            st.warning("⚠️ 第一行未找到'学院'列，正在尝试将第二行作为表头读取...")
-            
-            # 第二次尝试：跳过第一行读取（将第二行作为表头）
-            excel_file.seek(0)
-            df = pd.read_excel(excel_file, skiprows=1)
-            df.columns = df.columns.str.strip()
-            
-            # 再次检查是否找到"学院"列
-            if '学院' not in df.columns:
-                st.error("❌ 即使将第二行作为表头，仍无法找到'学院'列。")
-                st.write("当前文件中的列名：", df.columns.tolist())
-                st.stop()
-            else:
-                st.success(f"✅ 已成功将第二行作为表头读取，找到'学院'列。")
+        # 更智能的表头检测方法
+        st.info("正在分析Excel文件结构...")
+        
+        # 方法1：尝试读取前几行进行预览
+        if file_extension == 'xlsx':
+            # 对于xlsx文件，使用openpyxl引擎
+            preview_df = pd.read_excel(excel_file, nrows=5, engine='openpyxl')
         else:
-            st.success(f"✅ 已成功读取，第一行即为正确的表头。")
+            # 对于xls文件，使用xlrd引擎
+            preview_df = pd.read_excel(excel_file, nrows=5, engine='xlrd')
+            
+        # 重置文件指针到开头
+        excel_file.seek(0)
+        
+        st.write("**文件前几行预览：**")
+        st.dataframe(preview_df)
+        
+        # 自动检测表头位置
+        header_row = 0  # 默认从第一行开始
+        
+        # 查找包含"学院"或其他关键字的行作为表头
+        for i in range(3):  # 检查前3行
+            if file_extension == 'xlsx':
+                row_df = pd.read_excel(excel_file, header=i, nrows=0, engine='openpyxl')
+            else:
+                row_df = pd.read_excel(excel_file, header=i, nrows=0, engine='xlrd')
+            
+            excel_file.seek(0)  # 重置文件指针
+            
+            # 检查列名是否包含"学院"或中文表头特征
+            column_names = [str(col).strip().lower() for col in row_df.columns]
+            has_chinese_headers = any(any('\u4e00' <= char <= '\u9fff' for char in str(col)) for col in row_df.columns)
+            
+            # 如果找到"学院"列或有中文表头，使用当前行作为表头
+            if '学院' in column_names or has_chinese_headers:
+                header_row = i
+                st.success(f"✅ 检测到表头在第 {header_row + 1} 行")
+                break
+        
+        # 正式读取数据
+        st.info("正在读取完整数据...")
+        if file_extension == 'xlsx':
+            df = pd.read_excel(excel_file, header=header_row, engine='openpyxl')
+        else:
+            df = pd.read_excel(excel_file, header=header_row, engine='xlrd')
+            
+        df.columns = df.columns.str.strip()
         
         # 显示原始数据预览
         st.subheader("数据预览 (原始)")
         st.write(f"总共有 {len(df)} 行数据")
         st.write("**处理后的所有列名是：**", df.columns.tolist())
-        st.dataframe(df)
+        st.dataframe(df.head(20))
         
         # 第二步：检查并处理"学院"列
         st.header("第二步：处理学院排序")
         
-        if '学院' not in df.columns:
-            st.error("错误：在Excel文件中未找到名为'学院'的列。请检查列名。")
+        # 检查列名，不区分大小写和中英文括号
+        college_column = None
+        for col in df.columns:
+            col_clean = str(col).strip().lower().replace('（', '(').replace('）', ')')
+            if '学院' in col_clean:
+                college_column = col
+                break
+        
+        if college_column is None:
+            st.error("❌ 未找到包含'学院'的列。")
             st.write("当前文件中的列名：", df.columns.tolist())
-            st.stop()
+            
+            # 让用户手动选择学院列
+            college_column = st.selectbox(
+                "请手动选择包含学院信息的列：",
+                df.columns.tolist()
+            )
+            
+            if college_column:
+                st.success(f"✅ 已选择 '{college_column}' 作为学院列")
+            else:
+                st.stop()
+        
+        # 重命名列以便后续处理
+        if college_column != '学院':
+            df = df.rename(columns={college_column: '学院'})
+            st.info(f"已将列名 '{college_column}' 重命名为 '学院'")
         
         # 核心步骤1：自动删除空格
         st.info("正在清理'学院'列中的空格...")
@@ -204,13 +260,22 @@ if excel_file is not None:
         st.info("正在规范化学院名称")
         college_name_mapping = {
             "经管学院": "经济与管理学院",
+            "经管": "经济与管理学院",
             "文传学院": "文学与传媒学院",
-            "电电学院": "电子与电气工程学院",
+            "文传": "文学与传媒学院",
+            "电电学院": "电子与电气学院",
+            "电子电气": "电子与电气学院",
             "建工学院": "建筑与能源工程学院",
+            "建工": "建筑与能源工程学院",
             "外院": "外国语学院",
+            "外语": "外国语学院",
             "设艺学院": "设计艺术学院",
-            "创业学院": "创新与创业学院",
-            "数智学院": "数据科学与人工智能学院"
+            "设计": "设计艺术学院",
+            "创业学院": "创新创业学院",
+            "数智学院": "数据科学与人工智能学院",
+            "数智": "数据科学与人工智能学院",
+            "机器人": "机器人工程学院",
+            "法学": "法学院"
         }
         
         def normalize_college_name(name):
@@ -234,9 +299,18 @@ if excel_file is not None:
             college_data = df[df['学院'] == college]
             if not college_data.empty:
                 sorted_dfs.append(college_data)
-                st.write(f"  ✓ 已提取: {college} ({len(college_data)}行)")
+                st.success(f"✓ 已提取: {college} ({len(college_data)}行)")
             else:
-                st.write(f"  ⚠ 未找到: {college} (0行)")
+                # 尝试查找相似名称
+                similar_colleges = [c for c in unique_colleges if college in str(c) or str(c) in college]
+                if similar_colleges:
+                    for similar in similar_colleges:
+                        college_data = df[df['学院'] == similar]
+                        if not college_data.empty:
+                            sorted_dfs.append(college_data)
+                            st.warning(f"⚠ 使用相似名称: {similar} 替代 {college} ({len(college_data)}行)")
+                else:
+                    st.info(f"  - 未找到: {college} (0行)")
         
         # 合并所有排序后的数据
         if sorted_dfs:
@@ -251,6 +325,7 @@ if excel_file is not None:
             
             # 显示排序后的数据
             st.subheader("数据预览 (按学院排序后)")
+            st.write(f"排序后共有 {len(df_sorted)} 行数据")
             st.dataframe(df_sorted)
             
             # 更新df为排序后的数据
@@ -268,24 +343,17 @@ if excel_file is not None:
             default=all_columns[:4] if len(all_columns) >= 4 else all_columns
         )
         
-        # 第四步：填写日期和活动信息
-        st.header("第四步：填写活动信息")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            year = st.text_input("年份", "2024")
-        with col2:
-            month = st.text_input("月份", "10")
-        with col3:
-            day = st.text_input("日期", "25")
+        # 显示列预览
+        if selected_columns:
+            st.write("**选中的列：**", selected_columns)
+            st.dataframe(df[selected_columns].head(10))
         
-        activity = st.text_input("活动名称", "校园文化节")
-        
-        # 第五步：生成Word文档
-        st.header("第五步：生成Word文档")
+        # 第四步：生成Word文档
+        st.header("第四步：生成Word文档")
         
         if st.button("生成Word文档") and selected_columns:
             with st.spinner("正在生成Word文档..."):
-                doc = create_word_document(df, selected_columns, year, month, day, activity)
+                doc = create_word_document(df, selected_columns)
                 
                 # 保存到内存
                 file_stream = io.BytesIO()
@@ -293,16 +361,20 @@ if excel_file is not None:
                 file_stream.seek(0)
                 
                 # 提供下载
-                st.success("文档生成成功！")
+                st.success("✅ 文档生成成功！")
                 st.download_button(
                     label="📥 下载Word文档",
                     data=file_stream,
-                    file_name=f"公假单_{activity}.docx",
+                    file_name="按学院排序的表格.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
     
     except Exception as e:
-        st.error(f"读取文件失败: {str(e)}")
+        # 捕获所有异常
+        st.error(f"❌ 处理文件失败: {str(e)}")
+        st.error("请检查文件格式是否正确，或尝试重新上传文件。")
+        import traceback
+        st.error(traceback.format_exc())
 
 else:
-    st.info("请先上传Excel文件")
+    st.info("请先上传Excel文件（支持.xlsx和.xls格式）")
