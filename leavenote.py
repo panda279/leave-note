@@ -21,7 +21,7 @@ COLLEGE_ORDER = [
     "文学与传媒学院", 
     "数据科学与人工智能学院",
     "建筑与能源工程学院",
-    "电子与电气工程学院",
+    "电子与电气学院",
     "机器人工程学院",
     "设计艺术学院",
     "外国语学院",
@@ -36,7 +36,7 @@ def set_font(run, font_name='宋体', font_size=Pt(10.5), bold=False):
     run.font.bold = bold
     return run
 
-def create_word_document(df, selected_columns):
+def create_word_document(df, selected_columns, year, month, day, activity):
     # 创建文档
     doc = Document()
     
@@ -82,10 +82,8 @@ def create_word_document(df, selected_columns):
     title_run.font.size = Pt(22)
     title_run.font.bold = True
     title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    #doc.add_paragraph()
     
     # --- 请假说明 ---
-    # 这里使用不同的变量名，避免与上面的 title_paragraph 冲突
     college_title_paragraph = doc.add_paragraph()
     college_title_run = college_title_paragraph.add_run('各二级学院：')
     set_font_robust(college_title_run, '宋体', Pt(12), bold=True)
@@ -95,7 +93,7 @@ def create_word_document(df, selected_columns):
     text_paragraph1.paragraph_format.left_indent = Pt(0)
     text_paragraph1.paragraph_format.first_line_indent = Pt(24)
     text_paragraph1.paragraph_format.space_after = Pt(0)
-    text_content1 = '兹定于X年X月X日举办"XXX（填活动名称）"活动。以下同学因参与活动组织工作，将于X月X日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。'
+    text_content1 = f'兹定于{year}年{month}月{day}日举办"{activity}"活动。以下同学因参与活动组织工作，将于{month}月{day}日 上午/下午/全天（根据实际时间选择）协助相关会务工作，无法参加该时间段课程。'
     text_run1 = text_paragraph1.add_run(text_content1)
     set_font_robust(text_run1, '宋体', Pt(10.5))
 
@@ -104,13 +102,10 @@ def create_word_document(df, selected_columns):
     text_paragraph2.paragraph_format.left_indent = Pt(0)
     text_paragraph2.paragraph_format.first_line_indent = Pt(24)
     text_paragraph2.paragraph_format.space_after = Pt(12)
-    text_content2 = '特此申请为以下同学办理 X月X日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！'
+    text_content2 = f'特此申请为以下同学办理 {month}月{day}日 上午/下午/全天 的公假手续，恳请贵学院予以批准，谢谢！'
     text_run2 = text_paragraph2.add_run(text_content2)
     set_font_robust(text_run2, '宋体', Pt(10.5))
 
-    # 在说明文字和表格之间添加一个空行
-    #doc.add_paragraph()
-    
     # ========== 创建表格 ==========
     table = doc.add_table(rows=1, cols=len(selected_columns))
     
@@ -156,7 +151,7 @@ def create_word_document(df, selected_columns):
     set_font_robust(run1, '宋体', Pt(10.5), bold=True)
     signature_paragraph.add_run('\n')
     
-    run2 = signature_paragraph.add_run('xx年xx月xx日')
+    run2 = signature_paragraph.add_run(f'{year}年{month}月{day}日')
     set_font_robust(run2, '宋体', Pt(10.5))
     
     return doc
@@ -168,17 +163,16 @@ if excel_file is not None:
         df = pd.read_excel(excel_file)
         df.columns = df.columns.str.strip()
         
-        # 检查第一次读取是否找到“学院”列
+        # 检查第一次读取是否找到"学院"列
         if '学院' not in df.columns:
             st.warning("⚠️ 第一行未找到'学院'列，正在尝试将第二行作为表头读取...")
             
             # 第二次尝试：跳过第一行读取（将第二行作为表头）
-            # 重新读取文件流，需要将指针重置到开头
             excel_file.seek(0)
             df = pd.read_excel(excel_file, skiprows=1)
             df.columns = df.columns.str.strip()
             
-            # 再次检查是否找到“学院”列
+            # 再次检查是否找到"学院"列
             if '学院' not in df.columns:
                 st.error("❌ 即使将第二行作为表头，仍无法找到'学院'列。")
                 st.write("当前文件中的列名：", df.columns.tolist())
@@ -199,7 +193,6 @@ if excel_file is not None:
         
         if '学院' not in df.columns:
             st.error("错误：在Excel文件中未找到名为'学院'的列。请检查列名。")
-            # 显示所有列名帮助调试
             st.write("当前文件中的列名：", df.columns.tolist())
             st.stop()
         
@@ -275,12 +268,24 @@ if excel_file is not None:
             default=all_columns[:4] if len(all_columns) >= 4 else all_columns
         )
         
-        # 第四步：生成Word文档
-        st.header("第四步：生成Word文档")
+        # 第四步：填写日期和活动信息
+        st.header("第四步：填写活动信息")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            year = st.text_input("年份", "2024")
+        with col2:
+            month = st.text_input("月份", "10")
+        with col3:
+            day = st.text_input("日期", "25")
+        
+        activity = st.text_input("活动名称", "校园文化节")
+        
+        # 第五步：生成Word文档
+        st.header("第五步：生成Word文档")
         
         if st.button("生成Word文档") and selected_columns:
             with st.spinner("正在生成Word文档..."):
-                doc = create_word_document(df, selected_columns)
+                doc = create_word_document(df, selected_columns, year, month, day, activity)
                 
                 # 保存到内存
                 file_stream = io.BytesIO()
@@ -292,16 +297,12 @@ if excel_file is not None:
                 st.download_button(
                     label="📥 下载Word文档",
                     data=file_stream,
-                    file_name="按学院排序的表格.docx",
+                    file_name=f"公假单_{activity}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
     
     except Exception as e:
-        # 这个except只捕获读取文件时的异常
         st.error(f"读取文件失败: {str(e)}")
-        # 注意：这里没有return，程序会继续执行
 
 else:
-
     st.info("请先上传Excel文件")
-
