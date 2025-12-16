@@ -37,7 +37,7 @@ def create_word_document(df, selected_columns, doc_type, activity_info):
     normal_style = doc.styles['Normal']
     normal_style.font.name = '宋体'
     normal_style._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-    normal_style.font.size = Pt(10.5)
+    normal_style.font.size = Pt(0)
     
     # 文档大标题
     title_paragraph = doc.add_paragraph()
@@ -87,7 +87,7 @@ def create_word_document(df, selected_columns, doc_type, activity_info):
         # 第一段文字
         text_paragraph1 = doc.add_paragraph()
         text_paragraph1.paragraph_format.first_line_indent = Pt(21)
-        text_content1 = f'以下同学因参与{activity_info["work_date"]}的"{activity_info["activity_name"]}"活动，无法参加当晚晚自习。'
+        text_content1 =f'兹定于{activity_info["activity_date"]}举办"{activity_info["activity_name"]}"活动。以下同学因参与活动组织工作，将于{activity_info["work_date"]} {activity_info["work_time"]}协助相关会务工作，无法参加当晚晚自习。'
         text_run1 = text_paragraph1.add_run(text_content1)
         text_run1.font.name = '宋体'
         text_run1._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
@@ -106,7 +106,7 @@ def create_word_document(df, selected_columns, doc_type, activity_info):
         # 第一段文字
         text_paragraph1 = doc.add_paragraph()
         text_paragraph1.paragraph_format.first_line_indent = Pt(21)
-        text_content1 = f'以下同学因参与{activity_info["work_date"]}的"{activity_info["activity_name"]}"活动，无法参加次日上午的早自习。'
+        text_content1 = f'兹定于{activity_info["activity_date"]}举办"{activity_info["activity_name"]}"活动。以下同学因参与活动组织工作，将于{activity_info["work_date"]} {activity_info["work_time"]}协助相关会务工作，无法参加上午的早自习。'
         text_run1 = text_paragraph1.add_run(text_content1)
         text_run1.font.name = '宋体'
         text_run1._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
