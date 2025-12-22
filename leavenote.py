@@ -44,7 +44,7 @@ def create_word_document(df, selected_columns, doc_type, activity_info):
     if doc_type == "公假单":
         title_text = '公假单'
     elif doc_type == "抵晚单":
-        title_text = '抵晚自习请假单'
+        title_text = '抵晚单'
     else:  # 早自习请假单
         title_text = '早自习请假单'
     
@@ -124,6 +124,7 @@ def create_word_document(df, selected_columns, doc_type, activity_info):
     # 创建表格
     table = doc.add_table(rows=1, cols=len(selected_columns))
     table.style = "Table Grid"
+    table.autofit=True
     
     # 表头
     header_cells = table.rows[0].cells
@@ -343,3 +344,4 @@ if excel_file is not None:
 
 else:
     st.info("请先上传Excel文件（支持.xlsx和.xls格式）")
+
